@@ -7,7 +7,7 @@ from torch.optim import SGD
 import matplotlib.pyplot as plt
 class SimpleNet(nn.Module):
     def __init__(self) :
-        super.__init__()
+        super(SimpleNet,self).__init__()
         self.input = nn.Linear(1,4,bias=True)
         self.out = nn.Linear(4,1,bias=True)
         
@@ -37,6 +37,7 @@ if __name__ =='__main__':
         optimizer.zero_grad()
         train_loss.backward()
         optimizer.step()
+        print(train_loss.item())
         if i%10 == 9:
             plt.cla()
             plt.scatter(x.data.numpy(),y.data.numpy())
