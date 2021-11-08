@@ -1,31 +1,24 @@
 import sys
 from typing import Collection
+from torch.utils.data.dataloader import DataLoader
+from torch.utils.data.dataset import Dataset
+
+
+from torchvision.transforms.transforms import ToTensor
 
 sys.path.append('./')
 
-from torchvision.transforms.transforms import Normalize, ToTensor
-from params import params
-
+import torchvision.transforms.functional as F
 from read_and_write import *
 import torch
-from torch.utils.data import Dataset,DataLoader
+
 from torchvision import transforms
 import os
 from PIL import Image
 import numpy as np
 import collections
-# pre processing
-mean,std = ([0.485, 0.456, 0.406],
-            [0.229, 0.224, 0.225])
-train_transform = transforms.Compose([
-    # transforms.Resize([2,2]), 
-    # transforms.RandomHorizontalFlip(),
-    # transforms.RandomRotation(90),
-    # transforms.RandomRotation(180),
-    # transforms.RandomRotation(270),
-    # transforms.ToTensor(),                                           
-    transforms.Normalize(mean=mean, std=std),     
-])
+import numpy as np
+
 
 def OCOD(root):
     '''
@@ -37,7 +30,7 @@ def OCOD(root):
         train_list: (list) train_city
         test_lits: (list) test_city
     '''
-    img_dir = os.path.join(root,'images//Onera Satellite Change Detection dataset - Images')
+    img_dir = os.path.join(root,'images\\Onera Satellite Change Detection dataset - Images')
     # find train city and test city
     file_name = os.listdir(img_dir)
 
@@ -48,93 +41,101 @@ def OCOD(root):
     
     return train_city_name,test_city_name
 
+# 改写
+def get_path(root,train):
+    c1 = 'Onera Satellite Change Detection dataset - Images'
+    c2 = 'Onera Satellite Change Detection dataset - Train Labels'
+    img_dir = os.path.join(root,'images',c1)
+    label_dir = os.path.join(root,'train_labels',c2)
+    return img_dir,label_dir
+    # 改写
+def read_img(img_path,label_path,idx,train):
+    # gdal2numpy
+    T1_path = os.path.join(img_path,train[idx],'imgs_1_rect')
+    T2_path =  os.path.join(img_path,train[idx],'imgs_2_rect')
+    label_path = os.path.join(label_path,train[idx],'cm\\cm.png')
+    list1 = []
+    
+    for i in os.listdir(T1_path):
+        list1.append(gdal2np(os.path.join(T1_path,i)))
+    T1 = np.dstack(list1)
+    list1.clear()
+    
+    for i in os.listdir(T2_path):
+        list1.append(gdal2np(os.path.join(T2_path,i)))
+    T2 = np.dstack(list1)
+    label = Image.open(label_path).convert('L')
+    return T1,T2,np.array(label)
 
+def encode_one_hot(img):
+    img1 = img.copy()
+    img[img==1] = 0
+    img[img ==0] =1
+    return np.dstack((img,img1))
+# channel 0-1
+def normlization(img):
+    C = img.shape[2]
+    for i in range(C):
+        max1 = np.max(img[...,i])
+        min1 = np.min(img[...,i])
+        img[...,i] = (img[...,i]-min1)/(max1-min1)
+    return img
 class OCOD_Dataset(Dataset):
     '''
     Args:
         root: contains T1 image directory,T2 image directory,GT directory
-        
+        crop_size: random pick size of image 
 
     '''
-    def __init__(self,img_root,label_root,city) :
-        self.city = city
-        self.img_dir = img_root 
-        self.label_dir = label_root
-        pass
+    def __init__(self,root,train,crop_size) :
 
+        self.img,self.label = get_path(root,train)
+        self.size = crop_size
+        self.train = train
+        pass
+    
     def __len__(self):
-        return len(self.city)
-    
-    def __getitem__(self, idx) :
-        city_name = self.city[idx]
+        num = len(self.train)
+        return num
 
-        image_path = os.path.join(self.img_dir,city_name)
-        label_path = os.path.join(self.label_dir,city_name)
-        T1_path = os.path.join(image_path,'imgs_1_rect')
-        T2_path = os.path.join(image_path,'imgs_2_rect')
-        GT = Image.open(os.path.join(label_path,'cm\\'+'cm.png')).convert('L')
-        GT = np.array(GT,dtype='float32') 
-        # print(collections.Counter(GT.ravel()))    
-        GT[GT >= 100.0] =1.0  
-        # print(collections.Counter(GT.ravel()))     
-        GT = GT[:320,:320]   
-        
-        list1 =[]
-        for i in os.listdir(T1_path):
-            list1.append(gdal2np(os.path.join(T1_path,i)))
-        T1 = np.dstack(list1).astype('float32')[:320,:320,:]
-        
-        list2 =[]
-        for i in os.listdir(T2_path):
-            list2.append(gdal2np(os.path.join(T1_path,i)))
-        T2 = np.dstack(list2).astype('float32')[:320,:320,:]
-
-        
-        transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.RandomHorizontalFlip(),
-        transforms.RandomRotation(90),
-        transforms.RandomRotation(180),
-        transforms.RandomRotation(270),      
-]) 
-        T1 = transform(T1).numpy()
-        T2 = transform(T2).numpy()
-        # T1 归一化
-        for i in range(13):
-            term = T1[i,...]
-            max_term = np.max(term)
-            min_term = np.min(term)
-            T1[i,...] =  (T1[i,...] - min_term)/(max_term-min_term)
-        for i in range(13):
-            term = T2[...,i]
-            max_term = np.max(term)
-            min_term = np.min(term)
-            T2[...,i] =  (T2[...,i] - min_term)/(max_term-min_term)
-        return torch.from_numpy(T1),torch.from_numpy(T2),ToTensor()(GT)
-def OCOD_DataLoader(img_dir,label_dir,city,params):
-    return DataLoader(OCOD_Dataset(img_dir,label_dir,city),batch_size =params.batch_size
-        ,num_workers = params.num_workers,pin_memory =params.pin_memory,shuffle=True)
-
-
+    def __getitem__(self,idx) :
+       
+        T1,T2,label = read_img(self.img,self.label,idx,self.train)
+        T1 = T1.astype(np.float32)
+        T2 = T2.astype(np.float32)
+        # lable 0/1 化
+        label[label != 0] = 1.0
+        label = encode_one_hot(label)
+        T1 = normlization(T1)[:self.size,:self.size]
+        T2 = normlization(T2)[:self.size,:self.size]
+        # crop_size
+        T1 = ToTensor()(T1)
+        T2 = ToTensor()(T2)
+        label = ToTensor()(label[:self.size,:self.size])
+        # F.crop(T1,0,0,self.size,self.size)
+        # F.crop(T2,0,0,self.size,self.size)
+        # F.crop(label,0,0,self.size,self.size)
+        # data augmentation
+        return T1,T2,label
 if __name__ == "__main__":
+    root ='D:\hello\OCOD'
+    l1,l2 = OCOD(root)
     
-    root  = 'D:\hello\OCOD'
-    train_city,test_city = OCOD(root)
-    # 10
-    # 4
-    train_city = train_city[:10]
-    test_city = train_city[10:]
-    image_dir = 'D:\hello\OCOD\images\Onera Satellite Change Detection dataset - Images'
-    
-    label_dir = 'D:\hello\OCOD\\train_labels\Onera Satellite Change Detection dataset - Train Labels'
-    p = params(3,batch_size=1)
-    dataload = OCOD_Dataset(image_dir,label_dir,train_city)
-    for m ,(x,y,z) in enumerate(dataload):
-        pass
-        x = x.numpy()
-        y = y.numpy()
-        z = z.numpy()
+    data1 = OCOD_Dataset(root,l1,320)
+    # for x,y ,z in data1:
+    #     print(x.shape)
+    #     print(y.shape)
+    #     print(z.shape)
+    dataload_train = DataLoader(data1,batch_size=1,shuffle=True,num_workers=0,pin_memory=False)
+    for x,y,z in dataload_train:
         
+        
+
+        pass
+
+    pass
+    
+    
         
         
         

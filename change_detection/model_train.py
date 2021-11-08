@@ -13,21 +13,19 @@ def train_loop(dataload,net,loss_fn,optimizer,device):
             
         T1 = T1.to(device)
         T2 = T2.to(device)
-        B= T1.cpu().numpy()
-        print(np.max(B))
         x = torch.cat((T1,T2),dim=1).to(device)
         masks = masks.to(device)
         outputs = net(x)
-
+        
         loss = loss_fn(outputs,masks)
         running_loss +=loss.item()
             # Backpropagation
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+        
     return running_loss
-def test_loop(dataload,net,loss_fn,device):
-    
+def test_loop(dataload,net,loss_fn,device): 
     test_loss = 0
     with torch.no_grad():
         for T1,T2, y in dataload:
@@ -45,32 +43,34 @@ def test_loop(dataload,net,loss_fn,device):
         
     
 
+
+    
+
 if __name__ =="__main__":
-    net = FC_EF(26,1)
+    root ='D:\hello\OCOD'
+    l1,l2 = OCOD(root)
+    # train = l1[:10]
+    data = OCOD_Dataset(root,l1,320)
+    
+    # test_data = OCOD_Dataset(root,False,train,test,320)
+    train_size = int(0.8*len(data))
+    test_size = len(data) - train_size
+    train_data,test_data = torch.utils.data.random_split(data,[train_size,test_size])
+    
+    dataload_train = DataLoader(train_data,batch_size=1,shuffle=True,num_workers=2,pin_memory=False)
+    dataload_test = DataLoader(test_data,batch_size=1,shuffle=True,num_workers=2,pin_memory=False)
+    
+    net = FC_EF(26,2)
     device = torch.device('cuda' if torch.cuda.is_available else 'cpu')
     net.cuda(device)
-    root  = 'D:\hello\OCOD'
-    city,test_city = OCOD(root)
-    # # 10
-    # # 4
-    train_city = city[:10]
-    test_city = city[10:]
-    
-    img_dir = 'D:\hello\OCOD\images\Onera Satellite Change Detection dataset - Images'
-    label_dir = 'D:\hello\OCOD\\train_labels\Onera Satellite Change Detection dataset - Train Labels'
-    
-    p = params(3,batch_size=2)
-    dataload_train = OCOD_DataLoader(img_dir,label_dir,train_city,p)
-    dataload_test = OCOD_DataLoader(img_dir,label_dir,test_city,p)
-    
     loss_fn = nn.BCEWithLogitsLoss().to(device)
     opt = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
     num_epoch = 10
     for epoch in range(num_epoch):
         training_loss = train_loop(dataload_train,net,loss_fn,opt,device)
-        testloss = test_loop(dataload_test,net,loss_fn,device)
+        # testloss = test_loop(dataload_test,net,loss_fn,device)
         print('Epoch:{}/{}'.format(epoch,num_epoch))
-        print('training loss:{}\ntestloss:{}'.format(training_loss,testloss))
+        print('training loss:{}\n'.format(training_loss))
         print('-'*10)
     torch.save(net.state_dict(),'model_weight.pth')   
     pass
