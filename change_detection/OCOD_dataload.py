@@ -66,7 +66,8 @@ def read_img(img_path,label_path,idx,train):
     T2 = np.dstack(list1)
     label = Image.open(label_path).convert('L')
     return T1,T2,np.array(label)
-
+    
+# label 2 dimension
 def encode_one_hot(img):
     img1 = img.copy()
     img[img==1] = 0
